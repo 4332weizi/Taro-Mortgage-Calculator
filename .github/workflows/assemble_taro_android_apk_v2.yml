@@ -6,17 +6,17 @@ on:
   push:
     branches: [ master ]
     tags: [ v* ]
-  pull_request:
-    branches: [ master ]
 
   workflow_dispatch:
+    inputs: 
+
 
 # 工作流环境变量
 env:
   # 壳工程
   SHELL_REPO: 4332weizi/taro-native-shell
   # 壳工程ref
-  SHELL_REPO_REF: 0.63.2_origin
+  SHELL_REPO_REF: 0.64.0_support_workflows
   # 应用的application_id
   APP_ID: taro.mortgage.calculator
   # 应用名称
@@ -49,14 +49,17 @@ jobs:
   build-android:
     runs-on: ubuntu-latest
     steps: 
+      # 检出工程
       - name: Checkout Project
         uses: actions/checkout@v2
+      # 检出壳工程
       - name: Checkout Taro Shell Project
         uses: actions/checkout@v2
         with:
           repository: ${{ env.SHELL_REPO }}
           ref: ${{ env.SHELL_REPO_REF }}
           path: taro-native-shell
+      # 合并依赖
       - name: Merge Package Dependencies
         run: |
           node ${{ github.workspace }}/.github/merge-package.js \
@@ -64,15 +67,18 @@ jobs:
             ${{ github.workspace }}/taro-native-shell/package.json \
             ${{ github.workspace }}/package.json
           cat ${{ github.workspace }}/package.json
+      # 获取node_modules缓存
       - name: Cache node_modules Folder
         uses: actions/cache@v2
         with:
           path: ${{ github.workspace }}/node_modules
           key: ${{ runner.os }}-node_modules
           restore-keys: ${{ runner.os }}-node_modules
+      # 查询Yarn缓存目录
       - name: Get Yarn Cache Directory Path
         id: yarn-cache-dir-path
         run: echo "::set-output name=dir::$(yarn cache dir)"
+      # 获取Yarn缓存
       - name: Cache Yarn
         uses: actions/cache@v2
         env:
@@ -82,20 +88,25 @@ jobs:
           key: ${{ runner.os }}-yarn-${{ hashFiles('**/package.json') }}
           restore-keys: |
             ${{ runner.os }}-yarn-
+      # 执行yarn install
       - name: Install Dependencies
         run: |
           yarn install
+      # 打包jsbundle
       - name: Build Taro
         run: |
           yarn build:rn-android
+      # 上传jsbundle等
       - name: Upload Taro Products
         uses: actions/upload-artifact@v2
         with:
           name: taro-android-products
           path: dist/rn/android/
+      # 将node_moudles链接到壳工程目录
       - name: Link node_modules Folder to Shell Project
         run: |
           ln -s $PWD/node_modules $PWD/taro-native-shell/node_modules
+      # 合并资源文件
       - name: Merge Resources
         run: |
           mv ./dist/rn/android/index.android.bundle ./taro-native-shell/android/app/src/main/assets/index.android.bundle
@@ -104,6 +115,7 @@ jobs:
           fi
           rsync -a ./dist/rn/android/ ./taro-native-shell/android/app/src/main/res/
           rsync -a ${{ env.APP_RES }}/ ./taro-native-shell/android/app/src/main/res/
+      # 获取gradle缓存
       - name: Cache Gradle
         uses: actions/cache@v2
         env:
@@ -113,6 +125,7 @@ jobs:
           key: ${{ runner.os }}-gradle
           restore-keys: |
             ${{ runner.os }}-gradle
+      # 打包Android apk
       - name: Assemble Android ${{ env.BUILD_TYPE }}
         run: |
           cd ./taro-native-shell/android && \
@@ -128,6 +141,7 @@ jobs:
             -Pkeystore_password=${{ env.KEYSTORE_PASSWORD }} \
             -Pkeystore_key_alias=${{ env.KEYSTORE_KEY_ALIAS }} \
             -Pkeystore_key_password=${{ env.KEYSTORE_KEY_PASSWORD }}
+      # 上传Android apk包
       - name: Upload Android Products
         uses: actions/upload-artifact@v2
         with:
